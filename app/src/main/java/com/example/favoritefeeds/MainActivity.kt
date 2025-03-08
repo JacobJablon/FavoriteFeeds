@@ -97,6 +97,9 @@ fun Feeds(listItems: SnapshotStateList<FeedData>) {
     val scope = rememberCoroutineScope()
     val dataStore = FavoriteFeedsPreferences(context)
 
+    var oldFeedData by remember { mutableStateOf<FeedData?>(null) }
+    var isEditing by remember { mutableStateOf(false) }
+
 //    var listItems = remember {
 //        mutableStateListOf(
 //            //placeholders for now
@@ -138,7 +141,9 @@ fun Feeds(listItems: SnapshotStateList<FeedData>) {
 
         TagRow(tag = tagState, updateTag = { newTag -> tagState = newTag },
             feedPath = feedPathState, updateFeedPath = { newPath -> feedPathState = newPath},
-            listItems = listItems
+            listItems = listItems,
+            isEditing = isEditing, updateIsEditing = { newIsEditing -> isEditing = newIsEditing},
+            oldFeedData = oldFeedData, updateOldFeedData = { newOldFeedData -> oldFeedData = newOldFeedData}
             )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -152,7 +157,9 @@ fun Feeds(listItems: SnapshotStateList<FeedData>) {
                 FeedsRow(
                     listItems = listItems,
                     updateFeedPath = { newPath -> feedPathState = newPath},
-                    updateTag = { newTag -> tagState = newTag}
+                    updateTag = { newTag -> tagState = newTag},
+                    updateIsEditing = { newIsEditing -> isEditing = newIsEditing},
+                    updateOldFeedData = { newOldFeedData -> oldFeedData = newOldFeedData}
                 )
             }//box
         }//feeds column
@@ -187,7 +194,9 @@ fun Feeds(listItems: SnapshotStateList<FeedData>) {
 @Composable
 fun TagRow(tag: String, updateTag: (String)->Unit,
            feedPath: String, updateFeedPath: (String)->Unit,
-           listItems: SnapshotStateList<FeedData>
+           listItems: SnapshotStateList<FeedData>,
+           isEditing: Boolean, updateIsEditing: (Boolean)->Unit,
+           oldFeedData: FeedData?, updateOldFeedData: (FeedData?)->Unit
 ) {
 
     val context = LocalContext.current //needed for dialog box
@@ -232,17 +241,24 @@ fun TagRow(tag: String, updateTag: (String)->Unit,
                 if (tag.isNotEmpty() && feedPath.isNotEmpty()) {
                     val newFeed =
                         FeedData(path = feedPath, tag = tag) //need so can check for no changes
-                    if (!listItems.contains(newFeed)) {
-                        //is a new item
-                        listItems.add(newFeed)
-                        Log.d("JRJ", "New Feed Added")
+                    if (isEditing && oldFeedData != null) {
+                        listItems.remove(oldFeedData)
                         scope.launch {
-                            dataStore.setFeed(newFeed)
+                            dataStore.removeFeed(oldFeedData)
                         }
-                        listItems.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER, { it.tag }))
-                        Log.d("JRJ", listItems.joinToString())
                     }
+                    //is a new item
+                    listItems.add(newFeed)
+                    Log.d("JRJ", "New Feed Added")
+                    scope.launch {
+                        dataStore.setFeed(newFeed)
+                    }
+                    listItems.sortWith(compareBy(String.CASE_INSENSITIVE_ORDER, { it.tag }))
+                    Log.d("JRJ", listItems.joinToString())
+
                     //clear fields
+                    updateIsEditing(false)
+                    updateOldFeedData(null)
                     updateFeedPath("")
                     updateTag("")
                     focusManager.clearFocus() //dismiss keyboard
@@ -276,7 +292,8 @@ data class FeedData(val path: String, val tag: String)
 @SuppressLint("UnrememberedMutableState")
 @Composable
 fun FeedsRow(listItems: SnapshotStateList<FeedData>,
-             updateFeedPath: (String)->Unit, updateTag: (String)->Unit) {
+             updateFeedPath: (String)->Unit, updateTag: (String)->Unit,
+             updateIsEditing: (Boolean)->Unit, updateOldFeedData: (FeedData?)->Unit) {
 
     val listState = rememberLazyListState()
 
@@ -291,7 +308,7 @@ fun FeedsRow(listItems: SnapshotStateList<FeedData>,
             key = {_, listItem -> listItem.hashCode()}
         ) { index, item ->
 
-            FeedItemRow(feedItem = item, updateFeedPath, updateTag)
+            FeedItemRow(feedItem = item, updateFeedPath, updateTag, updateIsEditing, updateOldFeedData)
 
         }//itemsIndexed
 
@@ -300,7 +317,7 @@ fun FeedsRow(listItems: SnapshotStateList<FeedData>,
                 //probably move to another composable
                 Column(modifier = Modifier.padding(8.dp)) {
                     Text(
-                        text = "No Feeds To Display", //shoould be a string resource
+                        text = "No Feeds To Display", //should be a string resource
                         textAlign = TextAlign.Center,
                         modifier = Modifier
                             .padding(4.dp),
@@ -319,7 +336,9 @@ fun FeedsRow(listItems: SnapshotStateList<FeedData>,
 fun FeedItemRow(
     feedItem: FeedData,
     updateFeedPath: (String)->Unit,
-    updateTag: (String)->Unit
+    updateTag: (String)->Unit,
+    updateIsEditing: (Boolean)->Unit,
+    updateOldFeedData: (FeedData?)->Unit
 ) {
 
     val context = LocalContext.current
@@ -357,8 +376,10 @@ fun FeedItemRow(
 
         Button(
             onClick = {
+                updateOldFeedData(feedItem)
                 updateFeedPath(feedItem.path)
                 updateTag(feedItem.tag)
+                updateIsEditing(true)
             },
             shape = RoundedCornerShape(4.dp),
         ) {

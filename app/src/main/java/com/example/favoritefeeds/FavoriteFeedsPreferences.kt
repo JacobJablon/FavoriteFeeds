@@ -23,7 +23,7 @@ class FavoriteFeedsPreferences(private val context: Context) {
         return context.datastore.data
     }
 
-    //map the Flow<Preferences> inro a Flow<String>
+    //map the Flow<Preferences> into a Flow<String>
     fun getFeed(key: String): Flow<String> {
         return context.datastore.data.map { preferences ->
             preferences[stringPreferencesKey(key)] ?: ""
